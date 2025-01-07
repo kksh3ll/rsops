@@ -1,8 +1,9 @@
 use async_trait::async_trait;
-use bollard::Docker;
 use bollard::container::ListContainersOptions;
+use bollard::Docker;
+use futures_util::StreamExt;
+use futures_util::TryStreamExt;
 use thiserror::Error;
-use std::collections::HashMap;
 
 #[derive(Debug, Clone)]
 pub struct ContainerStatus {
@@ -25,7 +26,10 @@ pub enum ContainerError {
 #[async_trait]
 pub trait ContainerMonitor {
     async fn list_containers(&self) -> Result<Vec<ContainerStatus>, ContainerError>;
-    async fn get_container_stats(&self, container_id: &str) -> Result<ContainerStatus, ContainerError>;
+    async fn get_container_stats(
+        &self,
+        container_id: &str,
+    ) -> Result<ContainerStatus, ContainerError>;
 }
 
 pub struct DockerContainerMonitor {
@@ -36,7 +40,7 @@ impl DockerContainerMonitor {
     pub fn new() -> Result<Self, ContainerError> {
         let docker = Docker::connect_with_local_defaults()
             .map_err(|e| ContainerError::ConnectionError(e.to_string()))?;
-        
+
         Ok(Self { docker })
     }
 }
@@ -49,7 +53,8 @@ impl ContainerMonitor for DockerContainerMonitor {
             ..Default::default()
         });
 
-        let containers = self.docker
+        let containers = self
+            .docker
             .list_containers(options)
             .await
             .map_err(|e| ContainerError::MonitoringError(e.to_string()))?;
@@ -57,7 +62,9 @@ impl ContainerMonitor for DockerContainerMonitor {
         let mut container_statuses = Vec::new();
         for container in containers {
             let id = container.id.unwrap_or_default();
-            let name = container.names.unwrap_or_default()
+            let name = container
+                .names
+                .unwrap_or_default()
                 .first()
                 .cloned()
                 .unwrap_or_default()
@@ -79,33 +86,44 @@ impl ContainerMonitor for DockerContainerMonitor {
         Ok(container_statuses)
     }
 
-    async fn get_container_stats(&self, container_id: &str) -> Result<ContainerStatus, ContainerError> {
-        let stats = self.docker
-            .stats_once(container_id)
-            .await
-            .map_err(|e| ContainerError::MonitoringError(e.to_string()))?;
+    async fn get_container_stats(
+        &self,
+        container_id: &str,
+    ) -> Result<ContainerStatus, ContainerError> {
+        let mut stats_stream = self
+            .docker
+            .stats(container_id, None)
+            .map_err(|e| ContainerError::MonitoringError(e.to_string()));
 
-        let container = self.docker
+        let stats = stats_stream
+            .next()
+            .await
+            .ok_or_else(|| ContainerError::MonitoringError("no stats avalible".to_string()))??;
+
+        let container = self
+            .docker
             .inspect_container(container_id, None)
             .await
             .map_err(|e| ContainerError::MonitoringError(e.to_string()))?;
 
-        let name = container.name.unwrap_or_default()
+        let name = container
+            .name
+            .unwrap_or_default()
             .trim_start_matches('/')
             .to_string();
-        
-        let status = container.state
+
+        let status = container
+            .state
+            .clone()
             .and_then(|s| s.status)
-            .unwrap_or_default();
-        
-        let running = container.state
-            .and_then(|s| s.running)
-            .unwrap_or(false);
+            .unwrap_or(bollard::secret::ContainerStateStatusEnum::EMPTY);
+
+        let running = container.state.and_then(|s| s.running).unwrap_or(false);
 
         Ok(ContainerStatus {
             container_id: container_id.to_string(),
             name,
-            status,
+            status: status.to_string(),
             running,
             memory_usage: Some(stats.memory_stats.usage.unwrap_or(0)),
             cpu_usage: Some(stats.cpu_stats.cpu_usage.total_usage as f64),

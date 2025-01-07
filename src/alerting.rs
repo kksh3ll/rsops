@@ -1,5 +1,5 @@
-use crate::resource_monitor::ResourceMetrics;
 use crate::container_monitor::ContainerStatus;
+use crate::resource_monitor::ResourceMetrics;
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use serde::Serialize;
@@ -41,7 +41,7 @@ pub struct ContainerAlertRule {
     pub container: ContainerStatus,
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct ResourceThreshold {
     pub cpu_threshold: f32,
     pub memory_threshold: f32,
@@ -50,10 +50,7 @@ pub struct ResourceThreshold {
 
 impl ResourceAlertRule {
     pub fn new(threshold: ResourceThreshold, metrics: ResourceMetrics) -> Self {
-        Self {
-            threshold,
-            metrics,
-        }
+        Self { threshold, metrics }
     }
 }
 
@@ -61,8 +58,10 @@ impl ResourceAlertRule {
 impl AlertRule for ResourceAlertRule {
     async fn evaluate(&self) -> Result<Option<Alert>, AlertError> {
         let cpu_usage_percent = self.metrics.cpu_usage;
-        let memory_usage_percent = (self.metrics.memory_used as f32 / self.metrics.memory_total as f32) * 100.0;
-        let disk_usage_percent = (self.metrics.disk_used as f32 / self.metrics.disk_total as f32) * 100.0;
+        let memory_usage_percent =
+            (self.metrics.memory_used as f32 / self.metrics.memory_total as f32) * 100.0;
+        let disk_usage_percent =
+            (self.metrics.disk_used as f32 / self.metrics.disk_total as f32) * 100.0;
 
         if cpu_usage_percent > self.threshold.cpu_threshold {
             return Ok(Some(Alert {
@@ -107,9 +106,9 @@ impl AlertRule for ContainerAlertRule {
                 severity: AlertSeverity::Critical,
                 source: "Container".to_string(),
                 message: format!("Container {} is not running", self.container.name),
-                details: format!("Container ID: {}, Status: {}", 
-                    self.container.container_id, 
-                    self.container.status
+                details: format!(
+                    "Container ID: {}, Status: {}",
+                    self.container.container_id, self.container.status
                 ),
             }));
         }

@@ -1,5 +1,5 @@
 use async_trait::async_trait;
-use sysinfo::{System, SystemExt, CpuExt};
+use sysinfo::{CpuExt, DiskExt, System, SystemExt};
 use thiserror::Error;
 
 #[derive(Debug)]
@@ -40,13 +40,18 @@ impl ResourceMonitor for SystemResourceMonitor {
         let mut sys = System::new_all();
         sys.refresh_all();
 
-        let cpu_usage = sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32;
-        
+        let cpu_usage =
+            sys.cpus().iter().map(|cpu| cpu.cpu_usage()).sum::<f32>() / sys.cpus().len() as f32;
+
         Ok(ResourceMetrics {
             cpu_usage,
             memory_used: sys.used_memory(),
             memory_total: sys.total_memory(),
-            disk_used: sys.disks().iter().map(|disk| disk.total_space() - disk.available_space()).sum(),
+            disk_used: sys
+                .disks()
+                .iter()
+                .map(|disk| disk.total_space() - disk.available_space())
+                .sum(),
             disk_total: sys.disks().iter().map(|disk| disk.total_space()).sum(),
         })
     }

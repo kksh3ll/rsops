@@ -1404,6 +1404,7 @@ dependencies = [
  "chrono",
  "config",
  "env_logger",
+ "futures-util",
  "lettre",
  "log",
  "reqwest",

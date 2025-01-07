@@ -59,9 +59,9 @@ impl EmailNotifier {
 impl NotificationSender for EmailNotifier {
     async fn send(&self, alert: &Alert) -> Result<(), NotificationError> {
         let email = Message::builder()
-            .from(self.from_address.parse().map_err(|e| NotificationError::EmailError(e.to_string()))?)
-            .to(self.to_address.parse().map_err(|e| NotificationError::EmailError(e.to_string()))?)
-            .subject(format!("[{}] {} Alert: {}", alert.severity, alert.source, alert.message))
+            .from(self.from_address.parse().map_err(|e: lettre::address::AddressError| NotificationError::EmailError(e.to_string()))?)
+            .to(self.to_address.parse().map_err(|e: lettre::address::AddressError| NotificationError::EmailError(e.to_string()))?)
+            .subject(format!("[{:?}] {} Alert: {}", alert.severity, alert.source, alert.message))
             .body(format!(
                 "Alert Details:\n\nSource: {}\nSeverity: {:?}\nMessage: {}\nDetails: {}\nTimestamp: {}",
                 alert.source, alert.severity, alert.message, alert.details, alert.timestamp
@@ -76,7 +76,8 @@ impl NotificationSender for EmailNotifier {
             .credentials(creds)
             .build();
 
-        mailer.send(&email)
+        mailer
+            .send(&email)
             .map_err(|e| NotificationError::EmailError(e.to_string()))?;
 
         Ok(())
@@ -98,7 +99,7 @@ impl NotificationSender for SlackNotifier {
         let client = Client::new();
 
         let text = format!(
-            "*[{}] {} Alert*\n>Message: {}\n>Details: {}\n>Timestamp: {}",
+            "*[{:?}] {} Alert*\n>Message: {}\n>Details: {}\n>Timestamp: {}",
             alert.severity, alert.source, alert.message, alert.details, alert.timestamp
         );
 
